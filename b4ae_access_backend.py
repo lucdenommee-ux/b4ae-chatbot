@@ -1,24 +1,3 @@
-"""
-B4AE Access Backend — Checkout multi-categories + Webhook + API protegee
---------------------------------------------------------------------------
-3 endpoints :
-    POST /create-checkout   -> le client choisit ses categories, reçoit
-                                une URL Stripe Checkout a payer
-    POST /stripe-webhook    -> Stripe appelle ici apres paiement reussi,
-                                on accorde l'acces dans Supabase
-    GET  /api/category-data/<category>  -> retourne les donnees SEULEMENT
-                                si l'usager a un abonnement actif
-
-Necessite dans ton .env (et sur Render en variables d'environnement) :
-    STRIPE_SECRET_KEY
-    STRIPE_WEBHOOK_SECRET
-    SUPABASE_URL_B4AE
-    SUPABASE_SERVICE_KEY_B4AE
-
-Installation :
-    pip install flask flask-cors stripe requests python-dotenv --break-system-packages
-"""
-
 import os
 import json
 import requests
@@ -37,6 +16,8 @@ SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY_B4AE"]
 
 SUCCESS_URL = os.environ.get("CHECKOUT_SUCCESS_URL", "https://b4ae.com/checkout-success")
 CANCEL_URL = os.environ.get("CHECKOUT_CANCEL_URL", "https://b4ae.com/checkout-cancelled")
+
+ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()]
 
 CATEGORY_PRICES = {
     "phone": {"market_reference": 2000, "verified_live": 3500},
@@ -192,9 +173,13 @@ def get_category_data(category):
     if user_resp.status_code != 200:
         return jsonify({"error": "Token invalide"}), 401
 
-    user_id = user_resp.json().get("id")
+    user_data = user_resp.json()
+    user_id = user_data.get("id")
+    user_email = (user_data.get("email") or "").lower()
 
-    if not check_access(user_id, category):
+    is_admin = user_email in ADMIN_EMAILS
+
+    if not is_admin and not check_access(user_id, category):
         return jsonify({
             "error": "Acces non autorise",
             "message": f"Abonnez-vous a la categorie '{category}' pour voir ces donnees.",
